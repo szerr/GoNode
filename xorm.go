@@ -83,7 +83,7 @@ func Echo(args ...interface{}) {
 
 func Echor(args ...interface{}) {
 	//给提示输出加上颜色
-	print("\033[32m执行结果：")
+	print("\033[32m返回结果：")
 	fmt.Println(args...)
 	print("\033[0m")
 }
@@ -267,6 +267,35 @@ func main() {
 	Echo("Join连接多表查询：")
 	gu := []GroupUser{}
 	Echor(CheckErr(engine.Join("INNER", "group", "group.id=user.group_id").Find(&gu)), gu)
+
+	Echo("回调方式的逐条查询：")
+	CheckErr(engine.Where("age=17").Iterate(new(User), func(i int, bean interface{}) error {
+		user := bean.(*User)
+		Echor(i, *user)
+		return nil
+	}))
+
+	Echo("迭代器的逐条查询：")
+	user = new(User)
+	rows := CheckErr(engine.Where("age=17").Rows(user)).(*xorm.Rows)
+	defer rows.Close()
+	for rows.Next() {
+		Echor(CheckErr(rows.Scan(user)), user)
+	}
+
+	Echo("统计数据：")
+	user = new(User)
+	Echor(CheckErr(engine.Where("gender='女'").Count(user)))
+
+	Echo("Sum系列方法：")
+	Echo("Sum返回float64")
+	Echor(CheckErr(engine.Sum(user, "age")))
+	Echo("SumInt返回int64")
+	Echor(CheckErr(engine.SumInt(user, "age")))
+	Echo("Sums求多个字段的和，返回float64的Slice")
+	Echor(CheckErr(engine.Sums(user, "age", "id")))
+	Echo("Sums求多个字段的和，返回int64的Slice")
+	Echor(CheckErr(engine.SumsInt(user, "age", "id")))
 
 	Echo("数据：因为设置了deleted，所以不是真删除")
 	Echor(CheckErr(engine.Delete(user)), *user)
