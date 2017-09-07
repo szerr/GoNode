@@ -10,6 +10,17 @@ import (
 
 var engine *xorm.Engine
 
+const DBNAME = "xorm" //测试用的数据库名
+
+type GroupUser struct {
+	User  `xorm:"extends"`
+	Group `xorm:"extends"`
+}
+
+func (GroupUser) TableName() string {
+	return "user"
+}
+
 type User struct { //如果和关键字冲突，需要加上单引号
 	Id         int64
 	Name       string `xorm:"varchar(32) index notnull 'user_name'"`
@@ -19,6 +30,12 @@ type User struct { //如果和关键字冲突，需要加上单引号
 	CreateTime time.Time         `xorm:"created"`                 //创建时自动赋值
 	DeleteTime time.Time         `xorm:"deleted"`                 //删除时自动赋值 and 不删除
 	UpdateTime time.Time         `xorm:"updated"`                 //更新时自动赋值
+	GroupId    int64             `xorm:"index"`
+}
+
+type Group struct {
+	Id   int64
+	Name string
 }
 
 func init() {
@@ -43,7 +60,7 @@ func CheckErr(args ...interface{}) interface{} {
 func GetEngine() *xorm.Engine {
 	var err error
 	// 创建一个mysql engine
-	engine, err = xorm.NewEngine("mysql", "root@/xorm")
+	engine, err = xorm.NewEngine("mysql", "root@/"+DBNAME)
 	//这里的数据库连接串格式：[username[:password]@][protocol[(address)]]/dbname[?param1=value1&...&paramN=valueN]
 	//例如 readonly:bulabula@tcp(127.0.0.1:3306)/test?charset=utf-8
 	//engine是GoRoutine安全的
@@ -71,28 +88,44 @@ func Echor(args ...interface{}) {
 	print("\033[0m")
 }
 
+func InitGroup(engine *xorm.Engine) {
+	for _, name := range []string{"man", "woman"} {
+		group := new(Group)
+		has := CheckErr(engine.Where("Name=?", name).Get(group))
+		if has == false {
+			group.Name = name
+			engine.Insert(group)
+		}
+	}
+}
+
 func InsertTest(engine *xorm.Engine) int64 { //插入数据的例子
 	var all_insert_num int64
 	other := make(map[string]string)
 	other["bula"] = "didi"
 	other["didi"] = "bula"
+	group1 := new(Group)
+	group2 := new(Group)
+	CheckErr(engine.Where("name='man'").Get(group1))
+	CheckErr(engine.Where("name='woman'").Get(group2))
 	user1 := User{
-		Name:   "bulabula",
-		Age:    17,
-		Gender: "男",
-		Other:  other,
+		Name:    "bulabula",
+		Age:     17,
+		Gender:  "男",
+		Other:   other,
+		GroupId: group1.Id,
 	}
 	user2 := User{
-		Name:   "didadida",
-		Age:    18,
-		Gender: "女",
-		Other:  other,
+		Name:    "didadida",
+		Age:     18,
+		Gender:  "女",
+		Other:   other,
+		GroupId: group2.Id,
 	}
 	insert_num, err := engine.Insert(&user1, &user2) //插两条
 	CheckErr(err)
 	all_insert_num += insert_num
 	user2.Id += 1
-	user2.Gender = "男"
 	user2.Age = 19
 	insert_num, err = engine.InsertOne(&user2) //插一条
 	all_insert_num += insert_num
@@ -108,6 +141,8 @@ func main() {
 	engine.TZLocation, _ = time.LoadLocation("Asia/Shanghai") //默认是Local时区，这里改成其他时区
 	Echo("同步数据库结构：")
 	CheckErr(engine.Sync2(new(User)))
+	CheckErr(engine.Sync2(new(Group)))
+	InitGroup(engine) //初始化组数据
 
 	user := new(User)
 	users := []User{}
@@ -120,10 +155,22 @@ func main() {
 	Echo("插入数量: ", InsertTest(engine))
 
 	//查询数据：
-	Echo("查询第一条：")
+	Echo("查询第一条数据：")
 	Echor(CheckErr(engine.Get(user)), *user)
-	Echo("查询所有：")
-	//Echor(CheckErr(engine.Find(&users)), users)
+	Echo("根据struct中已有的数据查询")
+	user = &User{Name: user.Name}
+	Echor(CheckErr(engine.Get(user)), *user)
+	Echo("Get 会返回 has 和 err， has表示是否存在，err表示错误，不管err是否为nil，has都有可能true或者false")
+
+	Echo("查询所有数据：")
+	Echor(CheckErr(engine.Find(&users)), users)
+	Echo("Find也可以接收Map指针，map的key为Id")
+	users_map := make(map[int64]User)
+	Echor(CheckErr(engine.Find(&users_map)), users_map)
+	Echo("Find 如果只选择单个字段，也可以用非结构体的Slice")
+	var li []int64
+	Echor(CheckErr(engine.Table("user").Cols("id").Find(&li)), li)
+
 	Echo("条件查询：")
 	user = new(User) //注意每次查询前需要new一个新struct，不然会根据struct的值查询
 	Echor(CheckErr(engine.Where("age=? and gender=?", "18", "女").Get(user)), *user)
@@ -169,10 +216,11 @@ func main() {
 	Echo("指定字段：")
 	Echor(CheckErr(engine.Select("user_name, age").Id(1).Get(user)), *user)
 
-	Echo("直接跑sql, 这里可以不清空struct")
+	Echo("直接跑sql, 这里可以不初始化struct")
 	Echor(CheckErr(engine.Sql("select * from user where id=2").Get(user)), *user)
 
 	Echo("某字段在一些值中：")
+	users = []User{}
 	Echor(CheckErr(engine.In("id", 1, 2, 3).Find(&users)), users)
 
 	user = new(User)
@@ -191,7 +239,35 @@ func main() {
 
 	//再插一坨数据
 	InsertTest(engine)
+	InsertTest(engine)
 
-	Echo("删掉所有数据：")
-	Echor(CheckErr(engine.Delete(user)), user)
+	Echo("归类结果：")
+	users = []User{}
+	Echor(CheckErr(engine.Distinct("age", "user_name").Find(&users)), users)
+
+	Echo("指定对哪个表做操作：可以用结构体")
+	user = new(User)
+	Echor(CheckErr(engine.Table(&user).Get(user)), user)
+	Echo("或者表名：")
+	user = new(User)
+	Echor(CheckErr(engine.Table("user").Get(user)), user)
+
+	Echo("限制获取的条目：获取两条，从第二条开始，第二个参数不传为0")
+	users = []User{}
+	Echor(CheckErr(engine.Where("age=17").Limit(3, 1).Find(&users)), users)
+
+	Echo("用group by：默认select 参数为GroupBy的参数值, 可以用Cols或AllCols指定")
+	users = []User{}
+	Echor(CheckErr(engine.GroupBy("user_name").Cols("age", "user_name").Find(&users)), users)
+
+	Echo("用having查询：")
+	users = []User{}
+	Echor(CheckErr(engine.Having("age=17").Find(&users)), users)
+
+	Echo("Join连接多表查询：")
+	gu := []GroupUser{}
+	Echor(CheckErr(engine.Join("INNER", "group", "group.id=user.group_id").Find(&gu)), gu)
+
+	Echo("数据：因为设置了deleted，所以不是真删除")
+	Echor(CheckErr(engine.Delete(user)), *user)
 }
