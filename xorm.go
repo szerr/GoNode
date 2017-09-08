@@ -31,6 +31,7 @@ type User struct { //如果和关键字冲突，需要加上单引号
 	DeleteTime time.Time         `xorm:"deleted"`                 //删除时自动赋值 and 不删除
 	UpdateTime time.Time         `xorm:"updated"`                 //更新时自动赋值
 	GroupId    int64             `xorm:"index"`
+	Version    int               `xorm:"version"` //乐观锁用的字段
 }
 
 type Group struct {
@@ -204,38 +205,46 @@ func main() {
 	Echo("用主键查询：")
 	Echor(CheckErr(engine.Id(1).Get(user)), *user)
 
-	user = new(User)
-	Echo("用主键查询：")
-	Echor(CheckErr(engine.Id(1).Get(user)), *user)
-
 	//Echo("复合主键？这里没有这种东西")
 	//engine.Id(core.PK{1, "name"}).Get(&user)
 	//这里的两个参数按照struct中pk标记字段出现的顺序赋值。
 
 	user = new(User)
+	CheckErr(engine.Desc("age").Get(user)) //下边需要这个id，所以就不
 	Echo("指定字段：")
+	user = new(User)
 	Echor(CheckErr(engine.Select("user_name, age").Id(1).Get(user)), *user)
 
 	Echo("直接跑sql, 这里可以不初始化struct")
+	user = new(User)
 	Echor(CheckErr(engine.Sql("select * from user where id=2").Get(user)), *user)
 
 	Echo("某字段在一些值中：")
+	user = new(User)
 	users = []User{}
 	Echor(CheckErr(engine.In("id", 1, 2, 3).Find(&users)), users)
 
-	user = new(User)
 	Echo("用Cols指定查询某些字段：")
+	user = new(User)
 	Echor(CheckErr(engine.Cols("age", "user_name").Get(user)), *user)
 	Echo("用Cols指定更新某些字段：")
-	user = new(User)
 	user.Name = "haha"
-	Echor(CheckErr(engine.Where("id=?", 1).Cols("user_name", "age").Update(user)), *user)
+	Echor(CheckErr(engine.Id(user.Id).Cols("user_name", "age").Update(user)), *user)
 
 	Echo("指定操作所有字段：一般与Update配合使用，因为默认Update只更新非0，非”“，非bool的字段。这里只做个查询 = = ")
-	Echor(CheckErr(engine.Where("id=?", 2).AllCols().Update(user)), *user)
+	Echor(CheckErr(engine.Where("id=?", user.Id).AllCols().Update(user)), *user)
 
 	Echo("必须更新某些字段：让Update更新非0，非”“，非bool的字段。这个功能和Cols一样")
-	Echor(CheckErr(engine.Where("id=?", 3).MustCols("age").Update(user)), *user)
+	Echor(CheckErr(engine.Id(user.Id).MustCols("age").Update(user)), *user)
+
+	Echo("Update 也可以用map选择字段更新：返回更新的记录数")
+	user = new(User)
+	CheckErr(engine.Desc("age").Get(user)) //下边需要这个id，所以就不
+	Echo(user)
+	Echor(CheckErr(engine.Table(user).Id(user.Id).Cols("age").Update(map[string]interface{}{"age": 19})))
+
+	Echo("这里User因为启用的乐观锁，所以每次Update Version都会+1，每次更新必须包含version原来的值")
+	Echo("")
 
 	//再插一坨数据
 	InsertTest(engine)
@@ -297,6 +306,6 @@ func main() {
 	Echo("Sums求多个字段的和，返回int64的Slice")
 	Echor(CheckErr(engine.SumsInt(user, "age", "id")))
 
-	Echo("数据：因为设置了deleted，所以不是真删除")
+	Echo("删除：因为设置了deleted，所以不是真删除")
 	Echor(CheckErr(engine.Delete(user)), *user)
 }
