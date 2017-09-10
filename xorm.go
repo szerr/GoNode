@@ -240,10 +240,9 @@ func main() {
 	Echo("Update 也可以用map选择字段更新：返回更新的记录数")
 	user = new(User)
 	CheckErr(engine.Desc("age").Get(user)) //下边需要这个id，所以就不
-	Echo(user)
-	Echor(CheckErr(engine.Table(user).Id(user.Id).Cols("age").Update(map[string]interface{}{"age": 19})))
+	Echor(CheckErr(engine.Table(user).Id(user.Id).Cols("age").Update(map[string]interface{}{"age": 19, "Version":1})))
 
-	Echo("这里User因为启用的乐观锁，所以每次Update Version都会+1，每次更新必须包含version原来的值")
+	Echo("这里User因为启用的乐观锁，所以每次Update Version都会+1，每次更新必须包含version原来的值。用map更新时要传golang中的字段名而不是表里的字段名。")
 	Echo("")
 
 	//再插一坨数据
