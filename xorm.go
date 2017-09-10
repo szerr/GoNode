@@ -27,9 +27,9 @@ type User struct { //如果和关键字冲突，需要加上单引号
 	Age        int
 	Gender     string            `xorm:"varchar(8) default('男')"` //这里的中文 需要加个单引号
 	Other      map[string]string `xorm:"json"`                    //复合数据类型可以用json存储
-	CreateTime time.Time         `xorm:"created"`                 //创建时自动赋值
-	DeleteTime time.Time         `xorm:"deleted"`                 //删除时自动赋值 and 不删除
-	UpdateTime time.Time         `xorm:"updated"`                 //更新时自动赋值
+	CreateTime time.Time         `xorm:"created"`                 //创建时自动赋值 这里的类型可以用 time.Time int int64
+	DeleteTime int               `xorm:"deleted"`                 //删除时自动赋值 and 不删除 文档里说deleted标记必须是time.Time类型，实际用int没发现啥问题
+	UpdateTime int64             `xorm:"updated"`                 //更新时自动赋值
 	GroupId    int64             `xorm:"index"`
 	Version    int               `xorm:"version"` //乐观锁用的字段
 }
@@ -128,7 +128,7 @@ func InsertTest(engine *xorm.Engine) int64 { //插入数据的例子
 	all_insert_num += insert_num
 	user2.Id += 1
 	user2.Age = 19
-	insert_num, err = engine.InsertOne(&user2) //插一条
+	insert_num, err = engine.NoAutoTime().InsertOne(&user2) //插一条 加了NoAutoTime 不会自动插入时间
 	all_insert_num += insert_num
 	CheckErr(err)
 	return all_insert_num
@@ -305,6 +305,38 @@ func main() {
 	Echo("Sums求多个字段的和，返回int64的Slice")
 	Echor(CheckErr(engine.SumsInt(user, "age", "id")))
 
-	Echo("删除：因为设置了deleted，所以不是真删除")
+	Echo("删除所有17岁的数据，返回删除的记录数和错误：因为设置了deleted，所以不是真删除")
+	Echor(CheckErr(engine.Where("age=17").Delete(user)), *user)
+
+	user = new(User) //如果deleted字段有数据，会导致无法删除
+	Echo("删除所有数据：因为设置了deleted，所以不是真删除")
 	Echor(CheckErr(engine.Delete(user)), *user)
+	
+	user = new(User)
+	Echo("启用Unscoped，可以在设置deleted删除后还能获取到记录")
+	Echor(CheckErr(engine.Unscoped().Get(user)), *user)
+	Echo("启用Unscoped，永久删除记录")
+	Echor(CheckErr(engine.Unscoped().Delete(user)), *user)
+
+	Echo("执行SQL查询:虽是这么说了，执行其他命令也没可以。返回结果是 [map[string][]byte] 的格式。数字也是字符串描述。因为这里没有过滤deleted字段，所以上边删除的字段还能查到。")
+	Echor(CheckErr(engine.Query(`select * from user where age=?`, 18)))
+
+	Echo("执行sql命令：")
+	re := CheckErr(engine.Exec(`delete from user`))
+	insert_id := CheckErr(re.LastInsertId())
+	rows_num := CheckErr(re.LastInsertId())
+	Echor("LastInsertId返回插入后的自增id：", insert_id)
+	Echor("RowsAffected返回影响的数量：", rows_num)
+
+	Echo("下边是事务处理：")
+	session := engine.NewSession()
+	defer session.Close()
+	err := session.Begin()
+	group := Group{Name:"秀吉"}
+	err = session.Insert(group)
+	if err != nil {
+		session.Rollback()
+		return
+	}
+	user := User{Name:"hh", Age:10, Gender:"秀吉", GroupId:group.Id}
 }
