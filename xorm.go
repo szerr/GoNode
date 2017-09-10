@@ -242,7 +242,7 @@ func main() {
 	CheckErr(engine.Desc("age").Get(user)) //下边需要这个id，所以就不
 	Echor(CheckErr(engine.Table(user).Id(user.Id).Cols("age").Update(map[string]interface{}{"age": 19, "Version":1})))
 
-	Echo("这里User因为启用的乐观锁，所以每次Update Version都会+1，每次更新必须包含version原来的值。用map更新时要传golang中的字段名而不是表里的字段名。")
+	Echo("这里User因为启用的乐观锁，所以每次Update Version都会+1，每次更新必须包含version原来的值。用map更新时乐观锁字段必须传golang中的字段名而不是表里的字段名。")
 	Echo("")
 
 	//再插一坨数据
