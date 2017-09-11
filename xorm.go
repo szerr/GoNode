@@ -240,7 +240,7 @@ func main() {
 	Echo("Update 也可以用map选择字段更新：返回更新的记录数")
 	user = new(User)
 	CheckErr(engine.Desc("age").Get(user)) //下边需要这个id，所以就不
-	Echor(CheckErr(engine.Table(user).Id(user.Id).Cols("age").Update(map[string]interface{}{"age": 19, "Version":1})))
+	Echor(CheckErr(engine.Table(user).Id(user.Id).Cols("age").Update(map[string]interface{}{"age": 19, "Version": 1})))
 
 	Echo("这里User因为启用的乐观锁，所以每次Update Version都会+1，每次更新必须包含version原来的值。用map更新时乐观锁字段必须传golang中的字段名而不是表里的字段名。")
 	Echo("")
@@ -311,7 +311,7 @@ func main() {
 	user = new(User) //如果deleted字段有数据，会导致无法删除
 	Echo("删除所有数据：因为设置了deleted，所以不是真删除")
 	Echor(CheckErr(engine.Delete(user)), *user)
-	
+
 	user = new(User)
 	Echo("启用Unscoped，可以在设置deleted删除后还能获取到记录")
 	Echor(CheckErr(engine.Unscoped().Get(user)), *user)
@@ -322,21 +322,40 @@ func main() {
 	Echor(CheckErr(engine.Query(`select * from user where age=?`, 18)))
 
 	Echo("执行sql命令：")
-	re := CheckErr(engine.Exec(`delete from user`))
+	re, err := engine.Exec(`delete from user where age=11`)
+	CheckErr(err)
 	insert_id := CheckErr(re.LastInsertId())
-	rows_num := CheckErr(re.LastInsertId())
+	rows_num := CheckErr(re.RowsAffected())
 	Echor("LastInsertId返回插入后的自增id：", insert_id)
 	Echor("RowsAffected返回影响的数量：", rows_num)
 
 	Echo("下边是事务处理：")
 	session := engine.NewSession()
 	defer session.Close()
-	err := session.Begin()
-	group := Group{Name:"秀吉"}
-	err = session.Insert(group)
-	if err != nil {
+	err = session.Begin()
+	group := Group{Name: "秀吉"}
+	if _, err = session.Insert(&group); err != nil {
 		session.Rollback()
+		Echor(err)
 		return
 	}
-	user := User{Name:"hh", Age:10, Gender:"秀吉", GroupId:group.Id}
+	user = &User{Name: "hh", Age: 10, Gender: "秀吉", GroupId: group.Id}
+	if _, err = session.Insert(user); err != nil {
+		session.Rollback()
+		Echor(err)
+		return
+	}
+	if err = session.Commit(); err != nil { //如果是mysql 引擎为innodb事物才有效
+		Echor(err)
+	}
+
+	Echo("开启缓存")
+	cacher := xorm.NewLRUCacher(xorm.NewMemoryStore(), 1000) //配置一个LRU算法的缓存， 缓存struct记录为1000条，只针对有主键的表
+	engine.SetDefaultCacher(cacher)                          //设置全部用缓存
+	engine.MapCacher(user, nil)                              //这样可以让某个表不用缓存
+	engine.MapCacher(user, cacher)                           //让某个表用缓存
+	Echo("开启缓存后，在Get或者Find时使用Cols和Omit方法无效")
+	Echor(CheckErr(engine.Cols("age", "user_name").Get(user)), *user)
+	Echo("另外 使用Exec后，需要手动清理缓存")
+	engine.ClearCache(user)
 }
