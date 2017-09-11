@@ -1,5 +1,10 @@
 package main
 
+/*
+	xorm的运行例子
+	参考文档http://xorm.io/docs
+*/
+
 import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
