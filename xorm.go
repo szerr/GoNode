@@ -2,6 +2,7 @@ package main
 
 /*
 	xorm的运行例子
+	却少事件，工具的例子
 	参考文档http://xorm.io/docs
 */
 
