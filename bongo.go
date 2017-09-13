@@ -41,7 +41,7 @@ func Echor(args ...interface{}) {
 func CheckErr(args ...interface{}) interface{} {
 	err, _ := args[len(args)-1].(error)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	return args[0]
 }

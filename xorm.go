@@ -59,7 +59,7 @@ func CheckErr(args ...interface{}) interface{} {
 		err, _ = args[0].(error)
 	}
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	return redata
 }
